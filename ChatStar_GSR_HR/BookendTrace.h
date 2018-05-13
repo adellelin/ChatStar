@@ -1,0 +1,25 @@
+#ifndef H_BEPATTERN
+#define H_BEPATTERN
+
+#include "Pattern.h"
+
+class BookendTrace : public Pattern {
+
+  CRGB paintLed (float position, float remaining, CRGB previous, int primaryHue) {
+
+      // trace
+
+
+    if ((abs(sq(position - .5)-remaining)) >.7)
+      return CHSV(primaryHue, 160, 128);
+       //return CHSV(140, 160, 128); cyan
+
+      
+      //fade
+      return previous.nscale8(192);
+
+    }
+
+};
+
+#endif
