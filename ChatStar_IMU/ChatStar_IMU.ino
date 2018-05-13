@@ -20,16 +20,10 @@ SoftwareSerial xBeeSerial(20, 21); // RX, TX
 // How many leds in your strip?
 #define NUM_LEDS 40
 
-#define ASHLEY_LEFT  1
-#define ASHLEY_RIGHT 2
-#define JAMEY_LEFT   11
-#define JAMEY_RIGHT  12
-
-
 #define ADELLE 1 // use this when other jacket is HR, otherwise 0
 #define MATT 0 // we used MATT 0 for white jacket
 
-#define WHOSE_HARDWARE MATT // little black jacet with one long strip split to two connectors
+#define WHOSE_HARDWARE MATT // little black jacket with one long strip split to two connectors
 
 #define ADC_TEENSY_3_1 // change this depending on which board
 
@@ -45,13 +39,8 @@ SoftwareSerial xBeeSerial(20, 21); // RX, TX
 #define CLOCK_PIN_LEFT 3
 #endif
 
-#define MY_PATTERN_ID 1
+#define MY_PATTERN_ID 3
 
-
-// todo:
-// add per pattern duration
-// add per pattern cmd leter
-// add per pattern default colors
 Pattern* patterns[] = {
   new BookendFlip(), // pattern individually triggered
   new WhiteTrace(), // pattern upon receive
@@ -61,6 +50,9 @@ Pattern* patterns[] = {
   new Twinkler()
 };
 
+// TODO: double check bite of patterns
+elapsedMillis ellapseTimeMs[(sizeof(patterns)) / 4]; 
+
 int inboundHue = 229;
 
 int ledHue[] = { 0, 20, 255, 229, 160, 120};
@@ -69,13 +61,12 @@ int ledHue[] = { 0, 20, 255, 229, 160, 120};
 // 22 orange
 // 200 lilac
 
-elapsedMillis ellapseTimeMs[(sizeof(patterns)) / 4];
-
-float regularDuration = 10000;
-float fastDuration = 3000;
+float crazyDuration = 3000;
+float regularDuration = 8000;
+float fastDuration = 2000;
 float durationMs = regularDuration;
 
-float repeatDurationMs = 10000;
+float repeatDurationMs = 7000;
 boolean sentAlready = false; // send message boolean
 
 // for message sending timer
@@ -86,23 +77,23 @@ char quaternionValue;
 elapsedMillis sendEllapseMs;
 float sendMs = 2000;
 
-
 String inputString = "";         // a string to hold incoming data
 boolean stringComplete = false;  // whether the string is complete
 
+// TODO: this is meant for multi strip array
+// cleanup to account for symmetry and always starting from led[0]
+CRGB led[(sizeof(patterns)) / 4][NUM_LEDS]; 
 
-
-CRGB led[(sizeof(patterns)) / 4][NUM_LEDS];
 
 // Define the array of leds
 CRGB leds_right[NUM_LEDS];
 CRGB leds_left[NUM_LEDS];
 
 char soundCommand[] = {
-  'q', 'a', 'z',  // mushroom 0 is when all off
-  'w', 's', 'x',  // mushroom 1 is when only 4 on
-  'e', 'd', 'c',  // mushroom 2 is when only 3 on
-  'r', 'f', 'v'   // mushroom 3 is when 3 and 4 on
+  'q', 'a', 'z',  // mushroom 0 is when dipswitch all off
+  'w', 's', 'x',  // mushroom 1 is when dipswitch only 4 on
+  'e', 'd', 'c',  // mushroom 2 is when dipswitch only 3 on
+  'r', 'f', 'v'   // mushroom 3 is when dipswitch 3 and 4 on
 };
 
 //IMU GLobal Fields
@@ -166,7 +157,7 @@ void setup() {
     Serial.println(" REGULAR");
   }
 
-
+  // loop through all available patterns on startup
   for (int i = 0; i < (sizeof(patterns)) / 4; i++) {
     for (int j = 0; j < NUM_LEDS; j ++) {
       led[i][j] = CHSV(255 / NUM_LEDS * j, 255 / (sizeof(patterns)) / 4 * i, 255);
@@ -199,12 +190,15 @@ void loop() {
   }
 
   while (Serial1.available()) {
-
+    // Indicates within range of other jacket by mimicking its pattern
     char inChar = (char)Serial1.read();
     Serial.println(inChar);
     //Serial.println(sizeof(soundCommand));
     //Serial.println(sizeof(patterns)/4);
     durationMs = regularDuration;
+    // listen for incoming messages over the radio
+    // when receive incoming jacket id (soundCommand)
+    // fire off corresponsing LED pattern
     if (inChar == soundCommand[0]) {
       ellapseTimeMs[0] = 0;
     } else if (inChar == soundCommand[1]) {
@@ -228,46 +222,31 @@ void loop() {
     sendQuaternionMs = 0;
   }
 
+  repeatMyPattern();
 
-  choosePattern();
-
-
-  // send message to other jacket after pattern duration
-  if (false == sentAlready) {
-    //if (ellapseTimeMs[MY_PATTERN_ID] > durationMs / 4) { // sending halfway through
-    if (ellapseTimeMs[MY_PATTERN_ID] > 0) { // sending halfway through
-      Serial.print("sending::");
-      Serial.print(" my-pattern-id:");
-      Serial.print(MY_PATTERN_ID);
-      Serial.print(" cmd:");
-      Serial.println(soundCommand[MY_PATTERN_ID]);
-      Serial1.print(soundCommand[MY_PATTERN_ID]);
-      sentAlready = true;
-
-    }
-  }
-
- for (int i = 0; i < (sizeof(patterns)) / 4; i++) {
+  // manage color for my jacket and other jackets off the clock
+  // my jacket color is determined by imu motion detected
+  for (int i = 0; i < (sizeof(patterns)) / 4; i++) {
     for (int j = 0; j < NUM_LEDS; j ++) {
-
+      // turn all LED to black once time hits
       if (ellapseTimeMs[i] > durationMs ) {
-        led[i][j] = 0; // turn all LED to black once time hits
-      } else {
+        led[i][j] = 0; 
+      } else { // if pattern is still running, get i
         float position = j / (float)NUM_LEDS;
         float remaining = 1.0 - ellapseTimeMs[i] / durationMs;
-        // always use incoming hue from other person
+        // always use incoming hue from other person through xbee
         int color = inboundHue;
         // unless pattern ID when mine
-        if(i == MY_PATTERN_ID) {
+        // ellapseTime for my pattern will be < durationMs
+        if (i == MY_PATTERN_ID) {
           color = quaternionValue;
         }
         led[0][j] = patterns[i]->paintLed (position, remaining, led[0][j], color);
         //Serial.println(ledHue[i]);
       }
-
     }
   }
-  
+
   if ( abs(inboundHue - quaternionValue) < 5) {
     durationMs = fastDuration;
     if (ellapseTimeMs[2] > (fastDuration + 3000)) { // after 5 seconds
@@ -277,7 +256,7 @@ void loop() {
   } else {
     durationMs = regularDuration;
   }
-  
+
   show();
   delay(10);
 
@@ -286,6 +265,7 @@ void loop() {
 
 void show() {
 
+  //account for different jacket LED wiring configutaions
   switch (WHOSE_HARDWARE) {
     case ADELLE :
       for (int i = 0; i < 20; i ++) {
@@ -303,28 +283,40 @@ void show() {
         leds_left[i] = led[0][i];
       }
       break;
-
   }
 
-
   FastLED.show();
-
   return;
 }
 
-void choosePattern() {
+void repeatMyPattern() {
 
-  // autofire over repeat duration
+  // jackets autofire their own pattern over a set (repeat) duration
   if (ellapseTimeMs[MY_PATTERN_ID] > repeatDurationMs) {
     ellapseTimeMs[MY_PATTERN_ID] = 0;
     durationMs = regularDuration;
     sentAlready = false;
   }
 
+  // send message to other jacket after pattern duration
+  if (false == sentAlready) {
+    //if (ellapseTimeMs[MY_PATTERN_ID] > durationMs / 4) { // sending halfway through
+    if (ellapseTimeMs[MY_PATTERN_ID] > 0) { 
+      Serial.print("sending::");
+      Serial.print(" my-pattern-id:");
+      Serial.print(MY_PATTERN_ID);
+      Serial.print(" cmd:");
+      Serial.println(soundCommand[MY_PATTERN_ID]);
+      // send pattern ID to other jacket
+      Serial1.print(soundCommand[MY_PATTERN_ID]);
+      sentAlready = true;
+    }
+  }
+
   return;
 }
 
-
+// pattern fade out
 void fadeall() {
   for (int i = 0; i < NUM_LEDS; i++) {
     leds_right[i].nscale8(200);
@@ -332,6 +324,7 @@ void fadeall() {
   }
 }
 
+// set different modes with button press
 boolean isRegular() {
   //return !isCrazy();
   digitalRead(10);
