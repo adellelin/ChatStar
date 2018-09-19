@@ -3,14 +3,14 @@ ChatStar is a set of jackets that communicate wirelessly with each other through
 
 ### Hardware: 
 Base Setup:
-Teensy 3.2
-XBee 900 Pro
-WS2801 LED Chain - https://www.adafruit.com/product/738
+- Teensy 3.2
+- XBee 900 Pro
+- WS2801 LED Chain - https://www.adafruit.com/product/738
 
 Sensors:
-Polar Heart Rate Sensor
-Seed GSR Sensor
-Teensy Prop Shield with motion sensor
+- Polar Heart Rate Sensor
+- Seed GSR Sensor
+- Teensy Prop Shield with motion sensor
 
 Project Documentation: http://adelleninja.com/projects-1#/chatstar/
 
